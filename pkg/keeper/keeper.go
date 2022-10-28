@@ -34,6 +34,7 @@ import (
 	"github.com/jenkins-x/go-scm/scm"
 	"github.com/jenkins-x/lighthouse/pkg/apis/lighthouse/v1alpha1"
 	clientset "github.com/jenkins-x/lighthouse/pkg/client/clientset/versioned"
+	informerlj "github.com/jenkins-x/lighthouse/pkg/client/informers/externalversions"
 	"github.com/jenkins-x/lighthouse/pkg/config"
 	"github.com/jenkins-x/lighthouse/pkg/config/job"
 	"github.com/jenkins-x/lighthouse/pkg/config/keeper"
@@ -53,6 +54,7 @@ import (
 	tektonclient "github.com/tektoncd/pipeline/pkg/client/clientset/versioned"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
+	"k8s.io/client-go/tools/cache"
 )
 
 // For mocking out sleep during unit tests.
@@ -351,11 +353,16 @@ func (c *DefaultController) Sync() error {
 	var err error
 	if len(prs) > 0 {
 		start := time.Now()
+
 		lhjList, err := c.lhClient.LighthouseV1alpha1().LighthouseJobs(c.ns).List(context.TODO(), metav1.ListOptions{})
 		if err != nil {
 			c.logger.WithField("duration", time.Since(start).String()).Debug("Failed to list LighthouseJobs from the cluster.")
 			return err
 		}
+
+		factory := informerlj.NewSharedInformerFactoryWithOptions(c.lhClient, 30*time.Second, informerlj.WithNamespace(c.ns))
+		ljInformer := factory.Lighthouse().V1alpha1().LighthouseJobs().Informer()
+		ljInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{})
 
 		if len(lhjList.Items) > 200 {
 			c.logger.Warn("Over 200+ lighthouse jobs in the cluster, this could lead to keeper failing readiness and liveness probes")
@@ -620,13 +627,13 @@ func filterSubpool(spc scmProviderClient, sp *subpool) *subpool {
 
 // filterPR indicates if a PR should be filtered out of the subpool.
 // Specifically we filter out PRs that:
-// - Have known merge conflicts.
-// - Have failing or missing status contexts.
-// - Have pending required status contexts that are not associated with a
-//   PipelineActivity. (This ensures that the 'keeper' context indicates that the pending
-//   status is preventing merge. Required PipelineActivity statuses are allowed to be
-//   'pending' because this prevents kicking PRs from the pool when Keeper is
-//   retesting them.)
+//   - Have known merge conflicts.
+//   - Have failing or missing status contexts.
+//   - Have pending required status contexts that are not associated with a
+//     PipelineActivity. (This ensures that the 'keeper' context indicates that the pending
+//     status is preventing merge. Required PipelineActivity statuses are allowed to be
+//     'pending' because this prevents kicking PRs from the pool when Keeper is
+//     retesting them.)
 func filterPR(spc scmProviderClient, sp *subpool, pr *PullRequest) bool {
 	log := sp.log.WithFields(pr.logFields())
 	// Skip PRs that are known to be unmergeable.
