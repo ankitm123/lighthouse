@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"sync"
 
+	"github.com/go-redis/redis/v9"
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/jenkins-x/go-scm/scm"
 	"github.com/jenkins-x/lighthouse/pkg/config"
@@ -43,6 +44,7 @@ type Server struct {
 	Metrics        *Metrics
 	FileBrowsers   *filebrowser.FileBrowsers
 	InRepoCache    *lru.Cache
+	redisClient    *redis.Client
 
 	// Tracks running handlers for graceful shutdown
 	wg sync.WaitGroup

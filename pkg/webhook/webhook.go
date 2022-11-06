@@ -30,6 +30,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
+	"github.com/go-redis/redis/v9"
 )
 
 // WebhooksController holds the command line arguments
@@ -86,10 +87,12 @@ func NewWebhooksController(path, namespace, botName, pluginFilename, configFilen
 
 // CleanupGitClientDir cleans up the git client's working directory
 func (o *WebhooksController) CleanupGitClientDir() {
+	fmt.Println("starting Clean git directories")
 	err := o.gitClient.Clean()
 	if err != nil {
 		logrus.WithError(err).Fatal("Error cleaning the git client.")
 	}
+	fmt.Println("Finished Cleaning git directories")
 }
 
 // Health returns either HTTP 204 if the service is healthy, otherwise nothing ('cos it's dead).
@@ -135,6 +138,12 @@ func (o *WebhooksController) isReady() bool {
 // HandleWebhookRequests handles incoming webhook events
 func (o *WebhooksController) HandleWebhookRequests(w http.ResponseWriter, r *http.Request) {
 	o.handleWebhookOrPollRequest(w, r, "Webhook", func(scmClient *scm.Client, r *http.Request) (scm.Webhook, error) {
+		ceID, exists := r.Header["Ce-Id"]
+		if exists {
+			fmt.Println("We have a cloud event with id: ", ceID)
+			return nil, nil
+		}
+
 		return scmClient.Webhooks.Parse(r, o.secretFn)
 	})
 }
@@ -178,6 +187,7 @@ func (o *WebhooksController) handleWebhookOrPollRequest(w http.ResponseWriter, r
 		logrus.WithField("method", r.Method).Debug("invalid http method so returning 200")
 		return
 	}
+	fmt.Println("Parsing!!!")
 	logrus.Debug("about to parse webhook")
 
 	cfg := o.server.ConfigAgent.Config
@@ -482,10 +492,13 @@ func (o *WebhooksController) createHookServer() (*Server, error) {
 	pluginAgent := &plugins.ConfigAgent{}
 
 	var err error
+	fmt.Println("Configmap watcher creating")
 	o.ConfigMapWatcher, err = watcher.SetupConfigMapWatchers(o.namespace, configAgent, pluginAgent)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create ConfigMap watcher")
 	}
+
+	fmt.Println("Configmap watcher created")
 
 	promMetrics := NewMetrics()
 
@@ -509,6 +522,12 @@ func (o *WebhooksController) createHookServer() (*Server, error) {
 		return nil, errors.Wrapf(err, "failed to parse server URL %s", o.gitServerURL)
 	}
 
+	rdb := redis.NewClient(&redis.Options{
+        Addr:     "localhost:6379",
+        Password: "", // no password set
+        DB:       0,  // use default DB
+    })
+
 	cache, err := lru.New(5000)
 	if err != nil {
 		return nil, errors.Wrapf(err, "failed to create in-repo LRU cache")
@@ -520,8 +539,10 @@ func (o *WebhooksController) createHookServer() (*Server, error) {
 		Metrics:     promMetrics,
 		ServerURL:   serverURL,
 		InRepoCache: cache,
+		redisClient: rdb,
 		//TokenGenerator: secretAgent.GetTokenGenerator(o.webhookSecretFile),
 	}
+	fmt.Println("Server created!")
 	return server, nil
 }
 

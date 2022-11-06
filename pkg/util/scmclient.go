@@ -117,6 +117,7 @@ func GitKind(cfg config.Getter) string {
 	if kind == "" {
 		kind = "github"
 	}
+	fmt.Println("KIND: ", kind)
 	return kind
 }
 

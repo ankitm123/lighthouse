@@ -19,6 +19,7 @@ package interrupts
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
@@ -57,7 +58,9 @@ type manager struct {
 // manager, or there will be a deadlock.
 func handleInterrupt() {
 	signalsLock.Lock()
+	fmt.Println("LOCKED")
 	sigChan := signals()
+	fmt.Println("Got signals!")
 	signalsLock.Unlock()
 	s := <-sigChan
 	logrus.WithField("signal", s).Info("Received signal.")
