@@ -1571,6 +1571,13 @@ func (c *DefaultController) dividePool(pool map[string]PullRequest, pjs []v1alph
 		}
 		fn := poolKey(org, repo, branch)
 		if sps[fn] == nil {
+			if baseSHA == "" {
+				resolved, err := c.spc.GetRef(org, repo, "heads/"+branch)
+				if err != nil {
+					return nil, errors.Wrapf(err, "failed to resolve base SHA for %s/%s@%s", org, repo, branch)
+				}
+				baseSHA = resolved
+			}
 			sps[fn] = &subpool{
 				log: c.logger.WithFields(logrus.Fields{
 					"org":       org,
